@@ -1,0 +1,71 @@
+version: '4.0'
+services:
+  flask:
+    image: dokhanh25/plagcheck-flask:latest
+    container_name: plagcheck-flask
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=plagcheck
+      - MYSQL_PASSWORD=123456a@
+      - MYSQL_DATABASE=plagcheck_db
+      - SORL_URL=http://solr:8983/solr/solr_core_plagcheck
+      - FILE_DIR=/app/files
+      - LOG_LEVEL=INFO
+      - LOG_FILE=/app/app.log
+    ports:
+      - "5000:5000"
+    networks:
+      - solr_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  angular:
+    image: dokhanh25/plagcheck-angular:latest
+    container_name: plagcheck-angular
+    ports:
+      - "4200:80"  # Changed from 80:80
+    depends_on:
+      - flask
+    networks:
+      - solr_network
+
+  solr:
+    image: solr:latest
+    container_name: solr_plagcheck
+    ports:
+     - "8983:8983"
+    volumes:
+      - ./solr_data:/var/solr
+    environment:
+      - SOLR_MODULES=extraction
+    command:
+      - solr-precreate
+      - solr_core_plagcheck
+    networks:
+      - solr_network
+
+  mysql:
+    image: mysql:latest
+    container_name: mysql_plagcheck
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456a@
+      - MYSQL_DATABASE=plagcheck_db
+      - MYSQL_USER=plagcheck
+      - MYSQL_PASSWORD=123456a@
+    networks:
+      - solr_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p123456a@"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  solr_network:
+    driver: bridge

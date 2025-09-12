@@ -1,0 +1,7 @@
+.venv/
+/orginal_files/
+.idea/
+.vscode/
+__pycache__/
+/docker/mysql_data/
+/docker/solr_data/
