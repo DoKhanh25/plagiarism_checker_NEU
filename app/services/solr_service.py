@@ -12,7 +12,7 @@ class SolrService:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(SolrService, cls).__new__(cls)
-            cls._instance.base_url = Config.SORL_URL
+            cls._instance.base_url = Config.SOLR_URL
         return cls._instance
 
     @staticmethod

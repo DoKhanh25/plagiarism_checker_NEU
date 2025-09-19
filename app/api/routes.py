@@ -12,7 +12,7 @@ from .file_upload_route import MultipleFileSearch
 from .file_management_route import FileScanList
 from .file_upload_route import DownloadExcelSample
 from .file_management_route import FileScanResult
-from .file_search_ai_route import FileSearchAI
+from .file_search_ai_route import FileSearchAI, MetadataSearchAI
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -25,9 +25,9 @@ class FileList(Resource):
         try:
             search_term = request.args.get('search', '')
             search_type = request.args.get('type', 'name')  # 'name' or 'fulltext'
-            
+
             logger.info(f"Search parameters - term: {search_term}, type: {search_type}")
-            
+
             # Build the Solr query
             if search_term:
                 search_term = Utils.escape_solr_text(search_term)
@@ -38,12 +38,12 @@ class FileList(Resource):
                     query = f'{search_term}'
             else:
                 query = '*:*'
-                
+
             logger.info(f"Executing Solr query: {query}")
 
             # Query Solr for files
-            response = requests.get(f"{Config.SORL_URL}/query?q={query}&fl=id,resource_name,description&rows=1000")
-            
+            response = requests.get(f"{Config.SOLR_URL}/query?q={query}&fl=id,resource_name,description&rows=1000")
+
             if response.status_code != 200:
                 error_msg = "Không thể kết nối đến máy chủ Solr"
                 logger.error(f"{error_msg}. Status code: {response.status_code}")
@@ -51,46 +51,46 @@ class FileList(Resource):
 
             result = response.json()
             docs = result.get("response", {}).get("docs", [])
-            
+
             # Transform the response into a more client-friendly format
             # Handle cases where fields might be arrays
             files = []
             seen_ids = set()  # Track IDs we've already processed
-            
+
             for doc in docs:
                 # Get the ID value, handling both string and array cases
                 doc_id = doc.get("id", "")
                 if isinstance(doc_id, list) and doc_id:
                     doc_id = doc_id[0]
-                
+
                 # Skip duplicate IDs
                 if doc_id in seen_ids:
                     continue
                 seen_ids.add(doc_id)
-                
+
                 # Get resource_name, ensuring we have a string value
                 resource_name = doc.get("resource_name", ["Unknown"])
                 if isinstance(resource_name, list) and resource_name:
                     resource_name = resource_name[0]
                 elif not isinstance(resource_name, str):
                     resource_name = "Unknown"
-                
+
                 # Get description, ensuring we have a string value
                 description = doc.get("description", [""])
                 if isinstance(description, list) and description:
                     description = description[0]
                 elif not isinstance(description, str):
                     description = ""
-                
+
                 files.append({
                     "id": doc_id,
                     "name": resource_name,
                     "description": description
                 })
-                
+
             logger.info(f"Successfully retrieved {len(files)} unique files from Solr matching search criteria")
             return files, 200
-            
+
         except requests.RequestException as e:
             error_msg = f"Không thể kết nối đến Solr: {str(e)}"
             logger.error(error_msg)
@@ -136,11 +136,12 @@ def get_files_in_directory(directory_path):
     except Exception as e:
         logger.error(f"Error reading directory {directory_path}: {str(e)}")
         return []
+
+
+
 def initialize_routes(api):
     api.add_resource(FileList, '/api/files')
     api.add_resource(FileDownload, '/api/files/download/<string:file_id>')
-
-
     #Refactoring Route
     api.add_resource(SingleFileUpload, '/api/file-upload')
     api.add_resource(SingleFileSearch, '/api/file-search/single')
@@ -148,6 +149,7 @@ def initialize_routes(api):
     api.add_resource(FileScanList, '/api/file-scan-list')
     api.add_resource(DownloadExcelSample, '/api/download-excel-sample')
     api.add_resource(FileScanResult, '/api/file-scan-result')
-    api.add_resource(FileSearchAI, '/api/file-search/ai')
+    api.add_resource(FileSearchAI, '/api/file-search/ai/ask')
+    api.add_resource(MetadataSearchAI, '/api/file-search/ai/metadata')
 
 

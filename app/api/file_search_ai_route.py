@@ -4,9 +4,9 @@ import requests
 from flask import request
 from flask_restful import Resource
 from ..config import Config
-from ..services.sorl_service import SolrService
+from ..services.solr_service import SolrService
 from ..utils import Utils
-import openai
+from ..services.file_service import FileService
 import os
 
 
@@ -22,8 +22,8 @@ class FileSearchAI(Resource):
         content = data.get('content', '')
         mimetype = data.get('mimetype', '')
 
-        expmin = 5
-        expmax = 7
+        expmin = 6
+        expmax = 8
         multisource = True
 
         if(not filename or not content or not mimetype):
@@ -70,11 +70,11 @@ class FileSearchAI(Resource):
             words_doctotal = len(document.split())
             words_scanned = 0
             words_copied = 0
-            chars_doctotal = len(document)
-            chars_scanned = 0
-            chars_copied = 0
+
             samples_scanned = 0
             samples_copied = 0
+            current_sources = None
+            output = []
 
             # Split document into lines
             lines = [line.strip() for line in document.split('\n') if line.strip()]
@@ -85,12 +85,19 @@ class FileSearchAI(Resource):
                     if not match:
                         break
                     sample, possample = match.group(0), match.start()
+                    presample = text[:possample]
                     text = text[possample + len(sample):]
+
+                    sample = self._clean_search_sample(sample)
+                    if not sample or len(sample.strip()) < 3:  # Skip very short samples
+                        output.append({"type": "text", "content": presample + sample})
+                        continue
 
                     samples_scanned += 1
                     words_in_sample = len(sample.split())
                     words_scanned += words_in_sample
-                    chars_scanned += len(sample)
+
+                    output.append({"type": "text", "content": presample})
 
                     # Search for sample in Solr
                     logger.debug(f"Searching for sample {samples_scanned} in Solr database")
@@ -99,13 +106,12 @@ class FileSearchAI(Resource):
                         "fl": "id,resource_name,description",
                         "rows": rows
                     }
-                    response = requests.post(f"{Config.SORL_URL}/query", data=data)
+                    response = requests.post(f"{Config.SOLR_URL}/query", data=data)
                     result = response.json()
 
                     if result.get("response", {}).get("numFound", 0) > 0:
                         samples_copied += 1
                         words_copied += words_in_sample
-                        chars_copied += len(sample)
                         new_sources = {}
 
                         logger.debug(f"Found {result['response']['numFound']} matches for sample {samples_scanned}")
@@ -122,27 +128,37 @@ class FileSearchAI(Resource):
                             sources[source_id]["words"] += words_in_sample
                             sources[source_id]["samples"] += 1
                             new_sources[source_id] = True
+
+                        if current_sources != new_sources:
+                            current_sources = new_sources
+                            for source_id in new_sources:
+                                output.append({
+                                    "type": "marker",
+                                    "id": f"{source_id}",
+                                    "color": sources[source_id]["color"],
+                                    "name": sources[source_id]["name"]
+                                })
+
+                        output.append({
+                            "type": "highlight",
+                            "content": sample
+                        })
                     else:
                         logger.debug(f"No matches found for sample {samples_scanned}")
+                        output.append({"type": "text", "content": sample})
+
+                output.append({"type": "text", "content": text})
+                output.append({"type": "br"})
 
             # Calculate ratios
-            chars_original = chars_scanned - chars_copied
-            chars_original_ratio = chars_original / chars_scanned if chars_scanned else 0
             words_original = words_scanned - words_copied
             words_original_ratio = words_original / words_scanned if words_scanned else 0
             samples_original = samples_scanned - samples_copied
             samples_original_ratio = samples_original / samples_scanned if samples_scanned else 0
 
-            logger.info(f"Plagiarism analysis completed for {filename}")
-            logger.info(f"Samples scanned: {samples_scanned}, copied: {samples_copied}, original: {samples_original}")
-            logger.info(f"Words scanned: {words_scanned}, copied: {words_copied}, original: {words_original}")
-            logger.info(f"Characters scanned: {chars_scanned}, copied: {chars_copied}, original: {chars_original}")
-            logger.info(
-                f"Originality ratio - Words: {words_original_ratio:.2%}, Characters: {chars_original_ratio:.2%}")
 
             # Sort sources by words
             sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
-            logger.debug(f"Found {len(sorted_sources)} sources for plagiarism matches")
 
             result = {
                 "filename": filename,
@@ -159,15 +175,71 @@ class FileSearchAI(Resource):
                 },
                 "sources": [
                     {
-                        "id": info["id"],
+                        "id": source_id,
+                        "color": info["color"],
                         "name": info["name"],
-                        "words": info["words"],
-                        "samples": info["samples"]
                     } for source_id, info in sorted_sources
-                ]
+                ],
+                "output": output
             }
 
             return result, 200
         except Exception as e:
             logger.error(str(e))
             return {}, 500
+
+    def _clean_search_sample(self, sample):
+        """Clean and validate search sample"""
+        if not sample:
+            return sample
+
+        # Remove problematic characters that can break Solr queries
+        sample = re.sub(r'[^\w\s\.,;:!?\-\'\"()]', ' ', sample)  # Keep only safe characters
+        sample = re.sub(r'\s+', ' ', sample)  # Normalize whitespace
+        sample = sample.strip()
+
+        # Remove very short or very long samples
+        if len(sample) < 3 or len(sample) > 1000:
+            return ""
+
+        return sample
+
+
+
+class MetadataSearchAI(Resource):
+    def get(self):
+        result = {
+            "name": "Plagiarism Assistant",
+            "description": "Phát hiện trùng lặp văn bản với kho dữ liệu nội sinh",
+            "version": "1.2.0",
+            "developer": "Nhóm ThaoP, Khanh, Quang",
+            "capabilities": [
+                "search"
+            ],
+            "supported_models": [
+                {
+                    "model_id": "gpt-4o",
+                    "name": "GPT-4o",
+                    "description": "Mô hình mạnh cho tóm tắt và giải thích chi tiết",
+                    "accepted_file_types": [
+                        "pdf",
+                        "docx",
+                        "txt",
+                        "md"
+                    ]
+                }
+            ],
+            "sample_prompts": [
+                "Kiểm tra trùng lặp văn bản",
+                "Check đạo văn"
+            ],
+            "provided_data_types": [
+                {
+                    "type": "documents",
+                    "description": "Danh sách và thông tin tóm tắt các tài liệu trùng lặp"
+                }
+            ],
+            "contact": "thaop@neu.edu.vn",
+            "status": "active"
+        }
+        return result, 200

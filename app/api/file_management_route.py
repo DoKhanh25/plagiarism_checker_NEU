@@ -37,7 +37,7 @@ class FileList(Resource):
             logger.info(f"Executing Solr query: {query}")
 
             # Query Solr for files
-            response = requests.get(f"{Config.SORL_URL}/query?q={query}&fl=id,resource_name,description&rows=1000")
+            response = requests.get(f"{Config.SOLR_URL}/query?q={query}&fl=id,resource_name,description&rows=1000")
 
             if response.status_code != 200:
                 error_msg = "Không thể kết nối đến máy chủ Solr"
@@ -187,10 +187,6 @@ class FileScanResult(Resource):
                 "data": None,
                 "message": str(e)
             }, 500
-
-
-
-
 
 
 class FileScanList(Resource):

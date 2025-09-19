@@ -5,7 +5,7 @@ from urllib.parse import quote_plus
 load_dotenv()
 
 class Config:
-    SORL_URL = os.getenv('SORL_URL', 'http://localhost:8983/solr/solr_core_plagcheck')
+    SOLR_URL = os.getenv('SOLR_URL', 'http://localhost:8983/solr/solr_core_plagcheck')
     FILE_DIR = os.getenv('FILE_DIR', 'files')
     ORIGINAL_FILE_DIR = os.getenv('ORIGINAL_FILE_DIR', 'original_files')
     EXCEL_SAMPLE_DIR = os.getenv('EXCEL_FILE_UPLOAD_DIR', 'excel_sample')

@@ -1,7 +1,9 @@
 .venv/
-/orginal_files/
+/original_files/
 .idea/
 .vscode/
 __pycache__/
 /docker/mysql_data/
 /docker/solr_data/
+*.pyc
+.DS_Store

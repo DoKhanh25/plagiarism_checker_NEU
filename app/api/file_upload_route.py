@@ -5,7 +5,7 @@ from flask import request
 from flask_restful import Resource
 from ..config import Config
 from ..services.file_service import FileService
-from ..services.sorl_service import SolrService
+from ..services.solr_service import SolrService
 from ..services.database_service import DatabaseService
 from openpyxl import load_workbook
 from io import BytesIO
@@ -13,7 +13,6 @@ import datetime
 import threading
 import os
 from flask import send_file
-import openai
 from ..utils import Utils
 
 logger = logging.getLogger(__name__)
@@ -64,7 +63,7 @@ class SingleFileUpload(Resource):
         file.seek(0)
 
         # Check if document already exists in Solr
-        check_response = requests.get(f"{Config.SORL_URL}/query?q=id:{sha1_file}")
+        check_response = requests.get(f"{Config.SOLR_URL}/query?q=id:{sha1_file}")
 
         if check_response.status_code == 200:
             result = check_response.json()
@@ -228,7 +227,7 @@ class MultipleFileSearch(Resource):
 
 
                 is_in_solr = False
-                check_response = requests.get(f"{Config.SORL_URL}/query?q=id:{sha1_file}")
+                check_response = requests.get(f"{Config.SOLR_URL}/query?q=id:{sha1_file}")
                 if check_response.status_code == 200:
                     result = check_response.json()
                     if result.get("response", {}).get("numFound", 0) > 0:
@@ -323,7 +322,7 @@ class MultipleFileSearch(Resource):
                             "fl": "id,resource_name,description",
                             "rows": rows
                         }
-                        response = requests.post(f"{Config.SORL_URL}/query", data=data)
+                        response = requests.post(f"{Config.SOLR_URL}/query", data=data)
                         result = response.json()
 
                         if result.get("response", {}).get("numFound", 0) > 0:
@@ -722,7 +721,7 @@ class SingleFileSearch(Resource):
                         "fl": "id,resource_name,description",
                         "rows": rows
                     }
-                    response = requests.post(f"{Config.SORL_URL}/query", data=data)
+                    response = requests.post(f"{Config.SOLR_URL}/query", data=data)
                     result = response.json()
 
                     if result.get("response", {}).get("numFound", 0) > 0:

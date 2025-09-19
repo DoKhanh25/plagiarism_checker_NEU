@@ -9,12 +9,12 @@ services:
       - MYSQL_USER=plagcheck
       - MYSQL_PASSWORD=123456a@
       - MYSQL_DATABASE=plagcheck_db
-      - SORL_URL=http://solr:8983/solr/solr_core_plagcheck
+      - SOLR_URL=http://solr:8983/solr/solr_core_plagcheck
       - FILE_DIR=/app/files
       - LOG_LEVEL=INFO
       - LOG_FILE=/app/app.log
     ports:
-      - "5000:5000"
+      - "8002:5000"
     networks:
       - solr_network
     depends_on:
@@ -25,7 +25,7 @@ services:
     image: dokhanh25/plagcheck-angular:latest
     container_name: plagcheck-angular
     ports:
-      - "4200:80"  # Changed from 80:80
+      - "8003:80"  # Changed from 80:80
     depends_on:
       - flask
     networks:
