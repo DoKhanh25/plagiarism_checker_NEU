@@ -2,6 +2,9 @@
 .git/
 .gitignore
 
+# Data files
+original_files/*
+
 # Docker files
 docker/
 mysql_data/
