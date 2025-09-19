@@ -5,5 +5,7 @@
 __pycache__/
 /docker/mysql_data/
 /docker/solr_data/
+/docker/flask_data/
+
 *.pyc
 .DS_Store

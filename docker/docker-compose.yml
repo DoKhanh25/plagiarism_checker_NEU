@@ -37,7 +37,7 @@ services:
     image: solr:latest
     container_name: solr_plagcheck
     ports:
-     - "8983:8983"
+     - "8004:8983"
     volumes:
       - ./solr_data:/var/solr
     environment:
