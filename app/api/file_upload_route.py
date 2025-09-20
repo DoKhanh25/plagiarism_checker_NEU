@@ -870,7 +870,6 @@ class SingleFileSearch(Resource):
         self.solr_service = SolrService()
 
     def process_document_optimized(self, document, sha1_file, expmin, expmax, multisource):
-        """Optimized document processing with individual accurate searches"""
 
         samples_with_positions = []
         lines = [line.strip() for line in document.split('\n') if line.strip()]
@@ -902,7 +901,7 @@ class SingleFileSearch(Resource):
 
         # Use individual searches with connection reuse instead of batch
         samples_for_search = [(item['index'], item['sample']) for item in samples_with_positions]
-        search_results = self.solr_service.search_samples_individual(samples_for_search, sha1_file)
+        search_results = self.solr_service.search_samples_optimized(samples_for_search)
 
         logger.info(f"Completed individual searches, found matches for {len(search_results)} samples")
         return self._build_output_with_results(document, samples_with_positions, search_results, sha1_file, multisource)
