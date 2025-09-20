@@ -160,33 +160,112 @@ class FileSearchAI(Resource):
             # Sort sources by words
             sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
 
+            markdown_output = self._generate_markdown_output(output, [
+                {
+                    "id": source_id,
+                    "color": info["color"],
+                    "name": info["name"],
+                } for source_id, info in sorted_sources
+            ], {
+                "words_doctotal": words_doctotal,
+                "words_scanned": words_scanned,
+                "words_original": words_original,
+                "words_copied": words_copied,
+                "words_original_ratio": words_original_ratio,
+                "samples_scanned": samples_scanned,
+                "samples_original": samples_original,
+                "samples_copied": samples_copied,
+                "samples_original_ratio": samples_original_ratio
+            })
+
+            # result = {
+            #     "filename": filename,
+            #     "metrics": {
+            #         "words_doctotal": words_doctotal,
+            #         "words_scanned": words_scanned,
+            #         "words_original": words_original,
+            #         "words_copied": words_copied,
+            #         "words_original_ratio": words_original_ratio,
+            #         "samples_scanned": samples_scanned,
+            #         "samples_original": samples_original,
+            #         "samples_copied": samples_copied,
+            #         "samples_original_ratio": samples_original_ratio
+            #     },
+            #     "sources": [
+            #         {
+            #             "id": source_id,
+            #             "color": info["color"],
+            #             "name": info["name"],
+            #         } for source_id, info in sorted_sources
+            #     ],
+            #     "output": output
+            # }
+
             result = {
-                "filename": filename,
-                "metrics": {
-                    "words_doctotal": words_doctotal,
-                    "words_scanned": words_scanned,
-                    "words_original": words_original,
-                    "words_copied": words_copied,
-                    "words_original_ratio": words_original_ratio,
-                    "samples_scanned": samples_scanned,
-                    "samples_original": samples_original,
-                    "samples_copied": samples_copied,
-                    "samples_original_ratio": samples_original_ratio
-                },
-                "sources": [
-                    {
-                        "id": source_id,
-                        "color": info["color"],
-                        "name": info["name"],
-                    } for source_id, info in sorted_sources
-                ],
-                "output": output
+                "session_id": "abc123",
+                "status": "success",
+                "content_markdown": markdown_output,
+                "meta": {
+                    "model": "gpt-4o",
+                    "response_time_ms": 1420,
+                    "token_used": 312
+                }
             }
 
             return result, 200
         except Exception as e:
             logger.error(str(e))
             return {}, 500
+
+
+
+
+    def _generate_markdown_output(self, output, sources, metrics):
+        markdown_content = []
+        markdown_content.append("# Báo cáo đánh giá trùng lặp\n")
+        markdown_content.append("## Tổng quan\n")
+        markdown_content.append(f"- **Tổng số từ đã quét**: {metrics['words_scanned']}")
+        markdown_content.append(
+            f"- **Số từ không sao chép**: {metrics['words_original']} ({metrics['words_original_ratio']:.1%})")
+        markdown_content.append(
+            f"- **Số từ sao chép**: {metrics['words_copied']} ({(1 - metrics['words_original_ratio']):.1%})")
+        markdown_content.append(f"- **Tổng số mẫu đã quét**: {metrics['samples_scanned']}")
+        markdown_content.append(
+            f"- **Số mẫu không sao chép**: {metrics['samples_original']} ({metrics['samples_original_ratio']:.1%})")
+        markdown_content.append(f"- **Số mẫu sao chép**: {metrics['samples_copied']}\n")
+
+        if sources:
+            markdown_content.append("## Nguồn sao chép\n")
+            for i, source in enumerate(sources, 1):
+                markdown_content.append(f"{i}. **{source['name']}** (ID: {source['id']})")
+            markdown_content.append("")
+
+        markdown_content.append("## Phân tích nội dung\n")
+        current_sources = set()
+        current_color = None  # Track the current active color
+
+        for item in output:
+            if item["type"] == "text":
+                markdown_content.append(item["content"])
+            elif item["type"] == "highlight":
+                if current_color:
+                    # Apply color background using HTML span with inline CSS
+                    markdown_content.append(
+                        f'<span style="background-color: #{current_color}; padding: 2px 4px; border-radius: 3px;">**{item["content"]}**</span>')
+                else:
+                    markdown_content.append(f"**{item['content']}**")
+            elif item["type"] == "marker":
+                current_color = item.get("color")  # Update the current color
+                source_info = f"[Source: {item['name']}]"
+                if source_info not in current_sources:
+                    markdown_content.append(f"\n> {source_info}\n")
+                    current_sources.add(source_info)
+            elif item["type"] == "br":
+                markdown_content.append("\n")
+                current_color = None  # Reset color on line break
+
+        return "\n".join(markdown_content)
+
 
     def _clean_search_sample(self, sample):
         """Clean and validate search sample"""
