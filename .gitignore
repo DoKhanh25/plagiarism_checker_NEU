@@ -7,5 +7,7 @@ __pycache__/
 /docker/solr_data/
 /docker/flask_data/
 
+
+*.log
 *.pyc
 .DS_Store
