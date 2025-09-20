@@ -64,15 +64,15 @@ class SolrService:
             return field_value[0] if field_value else ""
         return field_value or ""
 
+
     def search_samples_optimized(self, samples):
-        """Search samples individually with accurate results"""
         results = {}
 
         for idx, sample in samples:
             try:
                 escaped_sample = Utils.escape_solr_text(sample)
                 query = f'"{escaped_sample}"'
-                # Use pysolr with session reuse for individual searches
+
                 search_results = self.solr_client.search(
                     query,
                     fl="id,resource_name,description",
@@ -96,15 +96,22 @@ class SolrService:
             data = {
                 "extractOnly": "true",
                 "extractFormat": "text",
-                "literal.resource_name": filename,
-                "capture": "body"
+                "literal.resource_name": filename
             }
             files_data = {"file": (filename, content, mimetype)}
+            timeout = getattr(Config, "SOLR_EXTRACT_TIMEOUT", 60)
 
-            return self.session.post(f"{self.base_url}/update/extract", data=data, files=files_data)
+            return self.session.post(f"{self.base_url}/update/extract",
+                                     data=data,
+                                     files=files_data,
+                                     timeout=timeout)
+        except requests.Timeout as e:
+            logger.error(f"Extract timeout for file {filename}: {str(e)}")
+            raise Exception(f"Text extraction timed out after {timeout} seconds - file may be too complex for Tika to process")
         except requests.RequestException as e:
             logger.error(f"Failed to extract text from file: {str(e)}")
             raise Exception(e)
+
 
     def upload_file(self, sha1_file, filename, content, mimetype, description, overwrite="false") -> requests.Response:
         try:

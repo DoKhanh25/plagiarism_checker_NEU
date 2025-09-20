@@ -907,7 +907,6 @@ class SingleFileSearch(Resource):
         return self._build_output_with_results(document, samples_with_positions, search_results, sha1_file, multisource)
 
     def _build_output_with_results(self, document, samples_with_positions, search_results, sha1_file, multisource):
-        """Build output using pre-computed search results"""
 
         sources = {}
         words_doctotal = len(document.split())

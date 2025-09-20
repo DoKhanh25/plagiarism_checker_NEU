@@ -6,8 +6,6 @@ from flask_restful import Resource
 from ..config import Config
 from ..services.solr_service import SolrService
 from ..utils import Utils
-from ..services.file_service import FileService
-import os
 
 
 logger = logging.getLogger(__name__)

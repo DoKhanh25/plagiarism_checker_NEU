@@ -32,6 +32,8 @@ class Config:
     SOLR_TIMEOUT = int(os.getenv('SOLR_TIMEOUT', '60'))
     CONNECTION_KEEP_ALIVE_TIMEOUT = int(os.getenv('KEEP_ALIVE_TIMEOUT', '120'))
 
+    #Config time-out for file processing
+    SOLR_EXTRACT_TIMEOUT = int(os.getenv('SOLR_EXTRACT_TIMEOUT', '60'))  # 5 minutes for text extraction
 
     # Logging configuration
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
