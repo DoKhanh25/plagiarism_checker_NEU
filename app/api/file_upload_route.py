@@ -14,6 +14,7 @@ import threading
 import os
 from flask import send_file
 from ..utils import Utils
+import pysolr
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class SingleFileUpload(Resource):
         logger.info(f"Received file upload request for {file.filename} with research name '{research_name}'")
         resources_created = {
             'solr': False,
-            'local_file': None, 
+            'local_file': None,
             'db': None
         }
 
@@ -159,6 +160,7 @@ class SingleFileUpload(Resource):
                 "data": None,
                 "message": str(e)
             }, 500
+
 
 
 
@@ -605,9 +607,429 @@ class MultipleFileSearch(Resource):
                 "message": f"Lỗi khi xử lý: {str(e)}"
             }, 500
 
+# class SingleFileSearch(Resource):
+#     def __init__(self):
+#         self.solr_service = SolrService()
+#
+#     def post(self):
+#
+#         expmin = int(request.form.get('expmin', '3'))
+#         expmax = int(request.form.get('expmax', '5'))
+#         multisource = request.form.get('multisource', 'false').lower() == 'true'
+#         file = request.files.get('file')
+#
+#         if expmin < 1 or expmax < expmin:
+#             return {
+#                 "status": 0,
+#                 "data": None,
+#                 "message": "Giá trị expmin hoặc expmax không hợp lệ"
+#             }, 400
+#
+#         if not file:
+#             return {
+#                 "status": 0,
+#                 "data": None,
+#                 "message": "Không có tệp nào được cung cấp"
+#             }, 400
+#         if not file.filename:
+#             return {
+#                 "status": 0,
+#                 "data": None,
+#                 "message": "Tệp không có tên"
+#             }, 400
+#
+#         try:
+#             content = file.read()
+#             sha1_file = FileService.calculate_sha1(content)
+#             file.seek(0)
+#
+#             response = self.solr_service.extract_text(
+#                 filename=file.filename,
+#                 content=content,
+#                 mimetype=file.mimetype
+#             )
+#
+#             if response.status_code != 200:
+#                 error_msg = f"Không thể kết nối đến máy chủ Solr cho tệp {file.filename}. Status code: {response.status_code}"
+#                 logger.error(error_msg)
+#                 return {
+#                     "status": 0,
+#                     "data": None,
+#                     "message": error_msg
+#                 }, 500
+#
+#             result = response.json()
+#
+#             if result.get("responseHeader", {}).get("status", 0) != 0:
+#                 error_msg = f"Không thể trích xuất văn bản từ {file.filename}"
+#                 logger.error(
+#                     f"{error_msg}. Solr response status: {result.get('responseHeader', {}).get('status', 'unknown')}")
+#                 return {
+#                     "status": 0,
+#                     "data": None,
+#                     "message": error_msg
+#                 }, 500
+#
+#             document = result.get('file', "")
+#
+#             if file.mimetype == 'application/pdf' or file.filename.lower().endswith('.pdf'):
+#                 document = self._clean_pdf_text(document)
+#
+#             rows = 10 if multisource else 1
+#
+#             # Initialize metrics
+#             sources = {}
+#             words_doctotal = len(document.split())
+#             words_scanned = 0
+#             words_copied = 0
+#             chars_doctotal = len(document)
+#             chars_scanned = 0
+#             chars_copied = 0
+#             samples_scanned = 0
+#             samples_copied = 0
+#             current_sources = None
+#             output = []
+#
+#             #Split document into lines
+#             lines = [line.strip() for line in document.split('\n') if line.strip()]
+#
+#             for line_num, text in enumerate(lines, 1):
+#                 while True:
+#                     match = re.search(r'(\S*\w\S*([\s.,-]+|$)+){' + str(expmin) + ',' + str(expmax) + '}', text)
+#                     if not match:
+#                         break
+#                     sample, possample = match.group(0), match.start()
+#                     presample = text[:possample]
+#                     text = text[possample + len(sample):]
+#
+#                     sample = self._clean_search_sample(sample)
+#                     if not sample or len(sample.strip()) < 3:  # Skip very short samples
+#                         output.append({"type": "text", "content": presample + sample})
+#                         continue
+#
+#
+#
+#                     samples_scanned += 1
+#                     words_in_sample = len(sample.split())
+#                     words_scanned += words_in_sample
+#                     chars_scanned += len(sample)
+#
+#                     output.append({"type": "text", "content": presample})
+#
+#                     # Search for sample in Solr
+#                     logger.debug(f"Searching for sample {samples_scanned} in Solr database")
+#                     data = {
+#                         "q": f'"{Utils.escape_solr_text(sample)}"',
+#                         "fl": "id,resource_name,description",
+#                         "rows": rows
+#                     }
+#                     response = requests.post(f"{Config.SOLR_URL}/query", data=data)
+#                     result = response.json()
+#
+#                     if result.get("response", {}).get("numFound", 0) > 0:
+#                         samples_copied += 1
+#                         words_copied += words_in_sample
+#                         chars_copied += len(sample)
+#                         new_sources = {}
+#
+#                         logger.debug(f"Found {result['response']['numFound']} matches for sample {samples_scanned}")
+#
+#                         for doc in result["response"]["docs"]:
+#                             source_id = doc["id"]
+#                             sources[source_id] = sources.get(source_id, {
+#                                 "color": source_id[:6],
+#                                 "name": doc.get("resource_name", ["Unknown"])[0],
+#                                 "description": doc.get("description", [""])[0],
+#                                 "words": 0,
+#                                 "samples": 0
+#                             })
+#                             sources[source_id]["words"] += words_in_sample
+#                             sources[source_id]["samples"] += 1
+#                             new_sources[source_id] = True
+#
+#                         if current_sources != new_sources:
+#                             current_sources = new_sources
+#                             for source_id in new_sources:
+#                                 output.append({
+#                                     "type": "marker",
+#                                     "id": f"{sha1_file}_{source_id}",
+#                                     "color": sources[source_id]["color"],
+#                                     "name": sources[source_id]["name"]
+#                                 })
+#
+#                         output.append({
+#                             "type": "highlight",
+#                             "content": sample
+#                         })
+#                     else:
+#                         logger.debug(f"No matches found for sample {samples_scanned}")
+#                         output.append({"type": "text", "content": sample})
+#
+#                 output.append({"type": "text", "content": text})
+#                 output.append({"type": "br"})
+#
+#             # Calculate ratios
+#             chars_original = chars_scanned - chars_copied
+#             chars_original_ratio = chars_original / chars_scanned if chars_scanned else 0
+#             words_original = words_scanned - words_copied
+#             words_original_ratio = words_original / words_scanned if words_scanned else 0
+#             samples_original = samples_scanned - samples_copied
+#             samples_original_ratio = samples_original / samples_scanned if samples_scanned else 0
+#
+#             logger.info(f"Plagiarism analysis completed for {file.filename}")
+#             logger.info(f"Samples scanned: {samples_scanned}, copied: {samples_copied}, original: {samples_original}")
+#             logger.info(f"Words scanned: {words_scanned}, copied: {words_copied}, original: {words_original}")
+#             logger.info(f"Characters scanned: {chars_scanned}, copied: {chars_copied}, original: {chars_original}")
+#             logger.info(
+#                 f"Originality ratio - Words: {words_original_ratio:.2%}, Characters: {chars_original_ratio:.2%}")
+#
+#             # Sort sources by words
+#             sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
+#             logger.debug(f"Found {len(sorted_sources)} sources for plagiarism matches")
+#
+#             result = {
+#                 "filename": file.filename,
+#                 "metrics": {
+#                     "chars_doctotal": chars_doctotal,
+#                     "chars_scanned": chars_scanned,
+#                     "chars_original": chars_original,
+#                     "chars_copied": chars_copied,
+#                     "chars_original_ratio": chars_original_ratio,
+#                     "words_doctotal": words_doctotal,
+#                     "words_scanned": words_scanned,
+#                     "words_original": words_original,
+#                     "words_copied": words_copied,
+#                     "words_original_ratio": words_original_ratio,
+#                     "samples_scanned": samples_scanned,
+#                     "samples_original": samples_original,
+#                     "samples_copied": samples_copied,
+#                     "samples_original_ratio": samples_original_ratio
+#                 },
+#                 "sources": [
+#                     {
+#                         "id": source_id,
+#                         "color": info["color"],
+#                         "name": info["name"],
+#                         "description": info["description"],
+#                         "words": info["words"],
+#                         "samples": info["samples"]
+#                     } for source_id, info in sorted_sources
+#                 ],
+#                 "output": output
+#             }
+#
+#             return {
+#                 "status": 1,
+#                 "data": result,
+#                 "message": "Phân tích đạo văn thành công"
+#             }, 200
+#
+#         except Exception as e:
+#             logger.error(str(e))
+#             return {
+#                 "status": 0,
+#                 "data": None,
+#                 "message": "Lỗi hệ thống: " + str(e)
+#             }, 500
+#
+#     def _clean_pdf_text(self, text):
+#         """Clean PDF extracted text from common artifacts"""
+#         if not text:
+#             return text
+#
+#         # Remove common PDF artifacts
+#         text = re.sub(r'\x00', '', text)  # Remove null bytes
+#         text = re.sub(r'[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)  # Remove control characters
+#         text = re.sub(r'\ufeff', '', text)  # Remove BOM
+#         text = re.sub(r'[\u200b-\u200f\u2028-\u202f\u205f-\u206f]', ' ', text)  # Remove zero-width chars
+#
+#         # Normalize whitespace
+#         text = re.sub(r'\s+', ' ', text)
+#         text = text.strip()
+#
+#         return text
+#
+#     def _clean_search_sample(self, sample):
+#         """Clean and validate search sample"""
+#         if not sample:
+#             return sample
+#
+#         # Remove problematic characters that can break Solr queries
+#         sample = re.sub(r'[^\w\s\.,;:!?\-\'\"()]', ' ', sample)  # Keep only safe characters
+#         sample = re.sub(r'\s+', ' ', sample)  # Normalize whitespace
+#         sample = sample.strip()
+#
+#         # Remove very short or very long samples
+#         if len(sample) < 3 or len(sample) > 1000:
+#             return ""
+#
+#         return sample
+
 class SingleFileSearch(Resource):
     def __init__(self):
         self.solr_service = SolrService()
+
+    def process_document_optimized(self, document, sha1_file, expmin, expmax, multisource):
+        """Optimized document processing with individual accurate searches"""
+
+        samples_with_positions = []
+        lines = [line.strip() for line in document.split('\n') if line.strip()]
+
+        # Extract all samples with proper positioning
+        for line_num, text in enumerate(lines, 1):
+            line_start = 0
+            while True:
+                match = re.search(r'(\S*\w\S*([\s.,-]+|$)+){' + str(expmin) + ',' + str(expmax) + '}', text[line_start:])
+                if not match:
+                    break
+
+                sample = match.group(0).strip()
+                sample = self._clean_search_sample(sample)
+
+                if sample and len(sample.strip()) >= 3:
+                    samples_with_positions.append({
+                        'index': len(samples_with_positions),
+                        'sample': sample,
+                        'line_num': line_num,
+                        'start_pos': line_start + match.start(),
+                        'end_pos': line_start + match.end(),
+                        'text_context': text
+                    })
+
+                line_start += match.end()
+
+        logger.info(f"Found {len(samples_with_positions)} samples to process")
+
+        # Use individual searches with connection reuse instead of batch
+        samples_for_search = [(item['index'], item['sample']) for item in samples_with_positions]
+        search_results = self.solr_service.search_samples_individual(samples_for_search, sha1_file)
+
+        logger.info(f"Completed individual searches, found matches for {len(search_results)} samples")
+        return self._build_output_with_results(document, samples_with_positions, search_results, sha1_file, multisource)
+
+    def _build_output_with_results(self, document, samples_with_positions, search_results, sha1_file, multisource):
+        """Build output using pre-computed search results"""
+
+        sources = {}
+        words_doctotal = len(document.split())
+        words_scanned = 0
+        words_copied = 0
+        chars_doctotal = len(document)
+        chars_scanned = 0
+        chars_copied = 0
+        samples_scanned = 0
+        samples_copied = 0
+        current_sources = None
+        output = []
+
+        lines = [line.strip() for line in document.split('\n') if line.strip()]
+
+        for line_num, text in enumerate(lines, 1):
+            line_samples = [s for s in samples_with_positions if s['line_num'] == line_num]
+            line_samples.sort(key=lambda x: x['start_pos'])
+
+            current_pos = 0
+
+            for sample_info in line_samples:
+                sample = sample_info['sample']
+                start_pos = sample_info['start_pos']
+                end_pos = sample_info['end_pos']
+                sample_idx = sample_info['index']
+
+                # Add text before sample
+                presample = text[current_pos:start_pos]
+                output.append({"type": "text", "content": presample})
+
+                # Update metrics
+                samples_scanned += 1
+                words_in_sample = len(sample.split())
+                words_scanned += words_in_sample
+                chars_scanned += len(sample)
+
+                # Check if sample has matches
+                if sample_idx in search_results:
+                    samples_copied += 1
+                    words_copied += words_in_sample
+                    chars_copied += len(sample)
+                    new_sources = {}
+
+                    docs = search_results[sample_idx][:10 if multisource else 1]
+
+                    for doc in docs:
+                        source_id = doc["id"]
+                        sources[source_id] = sources.get(source_id, {
+                            "color": source_id[:6],
+                            "name": doc.get("resource_name", "Unknown"),
+                            "description": doc.get("description", ""),
+                            "words": 0,
+                            "samples": 0
+                        })
+                        sources[source_id]["words"] += words_in_sample
+                        sources[source_id]["samples"] += 1
+                        new_sources[source_id] = True
+
+                    if current_sources != new_sources:
+                        current_sources = new_sources
+                        for source_id in new_sources:
+                            output.append({
+                                "type": "marker",
+                                "id": f"{sha1_file}_{source_id}",
+                                "color": sources[source_id]["color"],
+                                "name": sources[source_id]["name"]
+                            })
+
+                    output.append({"type": "highlight", "content": sample})
+                else:
+                    output.append({"type": "text", "content": sample})
+
+                current_pos = end_pos
+
+            # Add remaining text in line
+            remaining_text = text[current_pos:]
+            output.append({"type": "text", "content": remaining_text})
+            output.append({"type": "br"})
+
+        # Calculate ratios
+        chars_original = chars_scanned - chars_copied
+        chars_original_ratio = chars_original / chars_scanned if chars_scanned else 0
+        words_original = words_scanned - words_copied
+        words_original_ratio = words_original / words_scanned if words_scanned else 0
+        samples_original = samples_scanned - samples_copied
+        samples_original_ratio = samples_original / samples_scanned if samples_scanned else 0
+
+        # Sort sources by words
+        sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
+
+        return {
+            "filename": "processed_document",
+            "metrics": {
+                "chars_doctotal": chars_doctotal,
+                "chars_scanned": chars_scanned,
+                "chars_original": chars_original,
+                "chars_copied": chars_copied,
+                "chars_original_ratio": chars_original_ratio,
+                "words_doctotal": words_doctotal,
+                "words_scanned": words_scanned,
+                "words_original": words_original,
+                "words_copied": words_copied,
+                "words_original_ratio": words_original_ratio,
+                "samples_scanned": samples_scanned,
+                "samples_original": samples_original,
+                "samples_copied": samples_copied,
+                "samples_original_ratio": samples_original_ratio
+            },
+            "sources": [
+                {
+                    "id": source_id,
+                    "color": info["color"],
+                    "name": info["name"],
+                    "description": info["description"],
+                    "words": info["words"],
+                    "samples": info["samples"]
+                } for source_id, info in sorted_sources
+            ],
+            "output": output
+        }
 
     def post(self):
 
@@ -672,155 +1094,16 @@ class SingleFileSearch(Resource):
 
             if file.mimetype == 'application/pdf' or file.filename.lower().endswith('.pdf'):
                 document = self._clean_pdf_text(document)
-            
-            rows = 10 if multisource else 1
 
-            # Initialize metrics
-            sources = {}
-            words_doctotal = len(document.split())
-            words_scanned = 0
-            words_copied = 0
-            chars_doctotal = len(document)
-            chars_scanned = 0
-            chars_copied = 0
-            samples_scanned = 0
-            samples_copied = 0
-            current_sources = None
-            output = []
-
-            #Split document into lines
-            lines = [line.strip() for line in document.split('\n') if line.strip()]
-
-            for line_num, text in enumerate(lines, 1):
-                while True:
-                    match = re.search(r'(\S*\w\S*([\s.,-]+|$)+){' + str(expmin) + ',' + str(expmax) + '}', text)
-                    if not match:
-                        break
-                    sample, possample = match.group(0), match.start()
-                    presample = text[:possample]
-                    text = text[possample + len(sample):]
-
-                    sample = self._clean_search_sample(sample)
-                    if not sample or len(sample.strip()) < 3:  # Skip very short samples
-                        output.append({"type": "text", "content": presample + sample})
-                        continue
-
-
-
-                    samples_scanned += 1
-                    words_in_sample = len(sample.split())
-                    words_scanned += words_in_sample
-                    chars_scanned += len(sample)
-
-                    output.append({"type": "text", "content": presample})
-
-                    # Search for sample in Solr
-                    logger.debug(f"Searching for sample {samples_scanned} in Solr database")
-                    data = {
-                        "q": f'"{Utils.escape_solr_text(sample)}"',
-                        "fl": "id,resource_name,description",
-                        "rows": rows
-                    }
-                    response = requests.post(f"{Config.SOLR_URL}/query", data=data)
-                    result = response.json()
-
-                    if result.get("response", {}).get("numFound", 0) > 0:
-                        samples_copied += 1
-                        words_copied += words_in_sample
-                        chars_copied += len(sample)
-                        new_sources = {}
-
-                        logger.debug(f"Found {result['response']['numFound']} matches for sample {samples_scanned}")
-
-                        for doc in result["response"]["docs"]:
-                            source_id = doc["id"]
-                            sources[source_id] = sources.get(source_id, {
-                                "color": source_id[:6],
-                                "name": doc.get("resource_name", ["Unknown"])[0],
-                                "description": doc.get("description", [""])[0],
-                                "words": 0,
-                                "samples": 0
-                            })
-                            sources[source_id]["words"] += words_in_sample
-                            sources[source_id]["samples"] += 1
-                            new_sources[source_id] = True
-
-                        if current_sources != new_sources:
-                            current_sources = new_sources
-                            for source_id in new_sources:
-                                output.append({
-                                    "type": "marker",
-                                    "id": f"{sha1_file}_{source_id}",
-                                    "color": sources[source_id]["color"],
-                                    "name": sources[source_id]["name"]
-                                })
-
-                        output.append({
-                            "type": "highlight",
-                            "content": sample
-                        })
-                    else:
-                        logger.debug(f"No matches found for sample {samples_scanned}")
-                        output.append({"type": "text", "content": sample})
-
-                output.append({"type": "text", "content": text})
-                output.append({"type": "br"})
-
-            # Calculate ratios
-            chars_original = chars_scanned - chars_copied
-            chars_original_ratio = chars_original / chars_scanned if chars_scanned else 0
-            words_original = words_scanned - words_copied
-            words_original_ratio = words_original / words_scanned if words_scanned else 0
-            samples_original = samples_scanned - samples_copied
-            samples_original_ratio = samples_original / samples_scanned if samples_scanned else 0
-
-            logger.info(f"Plagiarism analysis completed for {file.filename}")
-            logger.info(f"Samples scanned: {samples_scanned}, copied: {samples_copied}, original: {samples_original}")
-            logger.info(f"Words scanned: {words_scanned}, copied: {words_copied}, original: {words_original}")
-            logger.info(f"Characters scanned: {chars_scanned}, copied: {chars_copied}, original: {chars_original}")
-            logger.info(
-                f"Originality ratio - Words: {words_original_ratio:.2%}, Characters: {chars_original_ratio:.2%}")
-
-            # Sort sources by words
-            sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
-            logger.debug(f"Found {len(sorted_sources)} sources for plagiarism matches")
-
-            result = {
-                "filename": file.filename,
-                "metrics": {
-                    "chars_doctotal": chars_doctotal,
-                    "chars_scanned": chars_scanned,
-                    "chars_original": chars_original,
-                    "chars_copied": chars_copied,
-                    "chars_original_ratio": chars_original_ratio,
-                    "words_doctotal": words_doctotal,
-                    "words_scanned": words_scanned,
-                    "words_original": words_original,
-                    "words_copied": words_copied,
-                    "words_original_ratio": words_original_ratio,
-                    "samples_scanned": samples_scanned,
-                    "samples_original": samples_original,
-                    "samples_copied": samples_copied,
-                    "samples_original_ratio": samples_original_ratio
-                },
-                "sources": [
-                    {
-                        "id": source_id,
-                        "color": info["color"],
-                        "name": info["name"],
-                        "description": info["description"],
-                        "words": info["words"],
-                        "samples": info["samples"]
-                    } for source_id, info in sorted_sources
-                ],
-                "output": output
-            }
+            result = self.process_document_optimized(document, sha1_file, expmin, expmax, multisource)
+            result["filename"] = file.filename
 
             return {
                 "status": 1,
                 "data": result,
                 "message": "Phân tích đạo văn thành công"
             }, 200
+
 
         except Exception as e:
             logger.error(str(e))
@@ -829,36 +1112,36 @@ class SingleFileSearch(Resource):
                 "data": None,
                 "message": "Lỗi hệ thống: " + str(e)
             }, 500
-    
+
     def _clean_pdf_text(self, text):
         """Clean PDF extracted text from common artifacts"""
         if not text:
             return text
-            
+
         # Remove common PDF artifacts
         text = re.sub(r'\x00', '', text)  # Remove null bytes
         text = re.sub(r'[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]', '', text)  # Remove control characters
         text = re.sub(r'\ufeff', '', text)  # Remove BOM
         text = re.sub(r'[\u200b-\u200f\u2028-\u202f\u205f-\u206f]', ' ', text)  # Remove zero-width chars
-        
+
         # Normalize whitespace
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
-        
+
         return text
 
     def _clean_search_sample(self, sample):
         """Clean and validate search sample"""
         if not sample:
             return sample
-            
+
         # Remove problematic characters that can break Solr queries
         sample = re.sub(r'[^\w\s\.,;:!?\-\'\"()]', ' ', sample)  # Keep only safe characters
         sample = re.sub(r'\s+', ' ', sample)  # Normalize whitespace
         sample = sample.strip()
-        
+
         # Remove very short or very long samples
         if len(sample) < 3 or len(sample) > 1000:
             return ""
-            
+
         return sample
