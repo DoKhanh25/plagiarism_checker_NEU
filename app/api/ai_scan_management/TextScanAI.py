@@ -1,16 +1,17 @@
 import re
 import logging
-import requests
 from flask import request
 from flask_restful import Resource
-from ..config import Config
-from ..services.solr_service import SolrService
-from ..utils import Utils
-
+from ...services.solr_service import SolrService
 
 logger = logging.getLogger(__name__)
 
-class FileSearchAI(Resource):
+"""
+Author: Khanh Trong Do
+Created: 20-09-2025
+Description: Provides a service connect to AI Agent for text scanning and plagiarism detection.
+"""
+class TextScanAI(Resource):
     def __init__(self):
         self.solr_service = SolrService()
 
@@ -239,6 +240,8 @@ class FileSearchAI(Resource):
             "output": output
         }
 
+
+
     def _clean_search_sample(self, sample):
         if not sample:
             return sample
@@ -298,55 +301,4 @@ class FileSearchAI(Resource):
 
     {content_analysis}
     """
-
         return markdown_content
-
-
-class MetadataSearchAI(Resource):
-    def get(self):
-        result = {
-            "name": "Plagiarism Assistant",
-            "description": "Phát hiện trùng lặp văn bản với kho dữ liệu nội sinh",
-            "version": "1.2.0",
-            "developer": "Nhóm ThaoP, Khanh, Quang",
-            "capabilities": [
-                "search"
-            ],
-            "supported_models": [
-                {
-                    "model_id": "gpt-4o",
-                    "name": "GPT-4o",
-                    "description": "Truyền vào một đoạn văn bản, kiểm tra độ trùng lặp",
-                    "accepted_file_types": [
-                        "pdf",
-                        "docx",
-                        "txt",
-                        "md"
-                    ]
-                },
-                {
-                    "model_id": "gpt-4o",
-                    "name": "GPT-4o",
-                    "description": "Truyền vào một đoạn một file, trả ra mức độ trùng lặp của file",
-                    "accepted_file_types": [
-                        "pdf",
-                        "docx",
-                        "txt",
-                        "md"
-                    ]
-                }
-            ],
-            "sample_prompts": [
-                "Kiểm tra trùng lặp văn bản",
-                "Check đạo văn"
-            ],
-            "provided_data_types": [
-                {
-                    "type": "documents",
-                    "description": "Danh sách và thông tin tóm tắt các tài liệu trùng lặp"
-                }
-            ],
-            "contact": "thaop@neu.edu.vn",
-            "status": "active"
-        }
-        return result, 200
