@@ -19,7 +19,11 @@ import pysolr
 logger = logging.getLogger(__name__)
 
 
-
+"""
+Author: Khanh Trong Do
+Created: 20-06-2025
+Description: Provides API endpoints for file upload and plagiarism detection.
+"""
 
 class SingleFileUpload(Resource):
     def __init__(self):
@@ -33,6 +37,8 @@ class SingleFileUpload(Resource):
         file = request.files.get('file')
 
         logger.info(f"Received file upload request for {file.filename} with research name '{research_name}'")
+
+
         resources_created = {
             'solr': False,
             'local_file': None,
@@ -58,24 +64,29 @@ class SingleFileUpload(Resource):
 
         logger.info(f"Processing file: {file.filename}")
 
-        # Tinh SHA1 cua file
+
         content = file.read()
         sha1_file = FileService.calculate_sha1(content)
         file.seek(0)
 
         # Check if document already exists in Solr
-        check_response = requests.get(f"{Config.SOLR_URL}/query?q=id:{sha1_file}")
+        existing_document = self.db_service.get_document_by_hash(sha1_file)
 
+        if existing_document:
+            msg = f"Tài liệu {file.filename} đã tồn tại trong cơ sở dữ liệu"
+            logger.info(msg)
+            return {"status": 0, "data": None, "message": msg}, 400
+
+        # Check if document already exists in Solr
+        check_response = requests.get(f"{Config.SOLR_URL}/query?q=id:{sha1_file}")
         if check_response.status_code == 200:
             result = check_response.json()
             if result.get("response", {}).get("numFound", 0) > 0:
-                msg = f"Tài liệu {file.filename} đã tồn tại trong cơ sở dữ liệu"
+                msg = f"Tài liệu {file.filename} đã tồn tại trong Solr"
                 logger.info(msg)
-                return {
-                    "status": 0,
-                    "data": None,
-                    "message": msg
-                }, 400
+                return {"status": 0, "data": None, "message": msg}, 400
+
+
 
         try:
             response = self.solr_service.upload_file(
@@ -901,7 +912,7 @@ class SingleFileSearch(Resource):
 
         # Use individual searches with connection reuse instead of batch
         samples_for_search = [(item['index'], item['sample']) for item in samples_with_positions]
-        search_results = self.solr_service.search_samples_optimized(samples_for_search)
+        search_results = self.solr_service.search_samples(samples_for_search)
 
         logger.info(f"Completed individual searches, found matches for {len(search_results)} samples")
         return self._build_output_with_results(document, samples_with_positions, search_results, sha1_file, multisource)

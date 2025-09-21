@@ -19,9 +19,10 @@ class FileSearchAI(Resource):
         filename = data.get('filename', '')
         content = data.get('content', '')
         mimetype = data.get('mimetype', '')
+        session_id = data.get('session_id', '')
 
         expmin = 6
-        expmax = 8
+        expmax = 9
         multisource = True
 
         if(not filename or not content or not mimetype):
@@ -61,110 +62,160 @@ class FileSearchAI(Resource):
                 }, 500
 
             document = result.get('file', "")
-            rows = 10 if multisource else 1
 
-            # Initialize metrics
-            sources = {}
-            words_doctotal = len(document.split())
-            words_scanned = 0
-            words_copied = 0
+            sha1_temp = "temporary_id"
+            result = self.process_document_optimized(document, sha1_temp, expmin, expmax, multisource)
+            result["filename"] = filename
 
-            samples_scanned = 0
-            samples_copied = 0
-            current_sources = None
-            output = []
+            markdown_output = self._generate_markdown_output(result["output"], result["sources"], result["metrics"])
 
-            # Split document into lines
-            lines = [line.strip() for line in document.split('\n') if line.strip()]
+            response_result = {
+                "session_id": session_id,
+                "status": "success",
+                "content_markdown": markdown_output
+            }
 
-            for line_num, text in enumerate(lines, 1):
-                while True:
-                    match = re.search(r'(\S*\w\S*([\s.,-]+|$)+){' + str(expmin) + ',' + str(expmax) + '}', text)
-                    if not match:
-                        break
-                    sample, possample = match.group(0), match.start()
-                    presample = text[:possample]
-                    text = text[possample + len(sample):]
+            return response_result, 200
+        except Exception as e:
+            logger.error(str(e))
+            return {}, 500
 
-                    sample = self._clean_search_sample(sample)
-                    if not sample or len(sample.strip()) < 3:  # Skip very short samples
-                        output.append({"type": "text", "content": presample + sample})
-                        continue
+    def process_document_optimized(self, document, sha1_file, expmin, expmax, multisource):
 
-                    samples_scanned += 1
-                    words_in_sample = len(sample.split())
-                    words_scanned += words_in_sample
+        samples_with_positions = []
+        lines = [line.strip() for line in document.split('\n') if line.strip()]
 
-                    output.append({"type": "text", "content": presample})
+        # Extract all samples with proper positioning
+        for line_num, text in enumerate(lines, 1):
+            line_start = 0
+            while True:
+                match = re.search(r'(\S*\w\S*([\s.,-]+|$)+){' + str(expmin) + ',' + str(expmax) + '}', text[line_start:])
+                if not match:
+                    break
 
-                    # Search for sample in Solr
-                    logger.debug(f"Searching for sample {samples_scanned} in Solr database")
-                    data = {
-                        "q": f'"{Utils.escape_solr_text(sample)}"',
-                        "fl": "id,resource_name,description",
-                        "rows": rows
-                    }
-                    response = requests.post(f"{Config.SOLR_URL}/query", data=data)
-                    result = response.json()
+                sample = match.group(0).strip()
+                sample = self._clean_search_sample(sample)
 
-                    if result.get("response", {}).get("numFound", 0) > 0:
-                        samples_copied += 1
-                        words_copied += words_in_sample
-                        new_sources = {}
+                if sample and len(sample.strip()) >= 3:
+                    samples_with_positions.append({
+                        'index': len(samples_with_positions),
+                        'sample': sample,
+                        'line_num': line_num,
+                        'start_pos': line_start + match.start(),
+                        'end_pos': line_start + match.end(),
+                        'text_context': text
+                    })
 
-                        logger.debug(f"Found {result['response']['numFound']} matches for sample {samples_scanned}")
+                line_start += match.end()
 
-                        for doc in result["response"]["docs"]:
-                            source_id = doc["id"]
-                            sources[source_id] = sources.get(source_id, {
-                                "color": source_id[:6],
-                                "name": doc.get("resource_name", ["Unknown"])[0],
-                                "description": doc.get("description", [""])[0],
-                                "words": 0,
-                                "samples": 0
-                            })
-                            sources[source_id]["words"] += words_in_sample
-                            sources[source_id]["samples"] += 1
-                            new_sources[source_id] = True
+        logger.info(f"Found {len(samples_with_positions)} samples to process")
 
-                        if current_sources != new_sources:
-                            current_sources = new_sources
-                            for source_id in new_sources:
-                                output.append({
-                                    "type": "marker",
-                                    "id": f"{source_id}",
-                                    "color": sources[source_id]["color"],
-                                    "name": sources[source_id]["name"]
-                                })
+        # Use optimized search method to get all results at once
+        samples_for_search = [(item['index'], item['sample']) for item in samples_with_positions]
+        search_results = self.solr_service.search_samples(samples_for_search)
 
-                        output.append({
-                            "type": "highlight",
-                            "content": sample
+        logger.info(f"Completed individual searches, found matches for {len(search_results)} samples")
+        return self._build_output_with_results(document, samples_with_positions, search_results, sha1_file, multisource)
+
+    def _build_output_with_results(self, document, samples_with_positions, search_results, sha1_file, multisource):
+        sources = {}
+        words_doctotal = len(document.split())
+        words_scanned = 0
+        words_copied = 0
+        chars_doctotal = len(document)
+        chars_scanned = 0
+        chars_copied = 0
+        samples_scanned = 0
+        samples_copied = 0
+        current_sources = None
+        output = []
+
+        lines = [line.strip() for line in document.split('\n') if line.strip()]
+
+        for line_num, text in enumerate(lines, 1):
+            line_samples = [s for s in samples_with_positions if s['line_num'] == line_num]
+            line_samples.sort(key=lambda x: x['start_pos'])
+
+            current_pos = 0
+
+            for sample_info in line_samples:
+                sample = sample_info['sample']
+                start_pos = sample_info['start_pos']
+                end_pos = sample_info['end_pos']
+                sample_idx = sample_info['index']
+
+                # Add text before sample
+                presample = text[current_pos:start_pos]
+                output.append({"type": "text", "content": presample})
+
+                # Update metrics
+                samples_scanned += 1
+                words_in_sample = len(sample.split())
+                words_scanned += words_in_sample
+                chars_scanned += len(sample)
+
+                # Check if sample has matches
+                if sample_idx in search_results:
+                    samples_copied += 1
+                    words_copied += words_in_sample
+                    chars_copied += len(sample)
+                    new_sources = {}
+
+                    docs = search_results[sample_idx][:10 if multisource else 1]
+
+                    for doc in docs:
+                        source_id = doc["id"]
+                        sources[source_id] = sources.get(source_id, {
+                            "color": source_id[:6],
+                            "name": doc.get("resource_name", "Unknown"),
+                            "description": doc.get("description", ""),
+                            "words": 0,
+                            "samples": 0
                         })
-                    else:
-                        logger.debug(f"No matches found for sample {samples_scanned}")
-                        output.append({"type": "text", "content": sample})
+                        sources[source_id]["words"] += words_in_sample
+                        sources[source_id]["samples"] += 1
+                        new_sources[source_id] = True
 
-                output.append({"type": "text", "content": text})
-                output.append({"type": "br"})
+                    if current_sources != new_sources:
+                        current_sources = new_sources
+                        for source_id in new_sources:
+                            output.append({
+                                "type": "marker",
+                                "id": f"{sha1_file}_{source_id}",
+                                "color": sources[source_id]["color"],
+                                "name": sources[source_id]["name"]
+                            })
 
-            # Calculate ratios
-            words_original = words_scanned - words_copied
-            words_original_ratio = words_original / words_scanned if words_scanned else 0
-            samples_original = samples_scanned - samples_copied
-            samples_original_ratio = samples_original / samples_scanned if samples_scanned else 0
+                    output.append({"type": "highlight", "content": sample})
+                else:
+                    output.append({"type": "text", "content": sample})
 
+                current_pos = end_pos
 
-            # Sort sources by words
-            sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
+            # Add remaining text in line
+            remaining_text = text[current_pos:]
+            output.append({"type": "text", "content": remaining_text})
+            output.append({"type": "br"})
 
-            markdown_output = self._generate_markdown_output(output, [
-                {
-                    "id": source_id,
-                    "color": info["color"],
-                    "name": info["name"],
-                } for source_id, info in sorted_sources
-            ], {
+        # Calculate ratios
+        chars_original = chars_scanned - chars_copied
+        chars_original_ratio = chars_original / chars_scanned if chars_scanned else 0
+        words_original = words_scanned - words_copied
+        words_original_ratio = words_original / words_scanned if words_scanned else 0
+        samples_original = samples_scanned - samples_copied
+        samples_original_ratio = samples_original / samples_scanned if samples_scanned else 0
+
+        # Sort sources by words
+        sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
+
+        return {
+            "filename": "processed_document",
+            "metrics": {
+                "chars_doctotal": chars_doctotal,
+                "chars_scanned": chars_scanned,
+                "chars_original": chars_original,
+                "chars_copied": chars_copied,
+                "chars_original_ratio": chars_original_ratio,
                 "words_doctotal": words_doctotal,
                 "words_scanned": words_scanned,
                 "words_original": words_original,
@@ -174,113 +225,81 @@ class FileSearchAI(Resource):
                 "samples_original": samples_original,
                 "samples_copied": samples_copied,
                 "samples_original_ratio": samples_original_ratio
-            })
-
-            # result = {
-            #     "filename": filename,
-            #     "metrics": {
-            #         "words_doctotal": words_doctotal,
-            #         "words_scanned": words_scanned,
-            #         "words_original": words_original,
-            #         "words_copied": words_copied,
-            #         "words_original_ratio": words_original_ratio,
-            #         "samples_scanned": samples_scanned,
-            #         "samples_original": samples_original,
-            #         "samples_copied": samples_copied,
-            #         "samples_original_ratio": samples_original_ratio
-            #     },
-            #     "sources": [
-            #         {
-            #             "id": source_id,
-            #             "color": info["color"],
-            #             "name": info["name"],
-            #         } for source_id, info in sorted_sources
-            #     ],
-            #     "output": output
-            # }
-
-            result = {
-                "session_id": "abc123",
-                "status": "success",
-                "content_markdown": markdown_output,
-                "meta": {
-                    "model": "gpt-4o",
-                    "response_time_ms": 1420,
-                    "token_used": 312
-                }
-            }
-
-            return result, 200
-        except Exception as e:
-            logger.error(str(e))
-            return {}, 500
-
-
-
-
-    def _generate_markdown_output(self, output, sources, metrics):
-        markdown_content = []
-        markdown_content.append("# Báo cáo đánh giá trùng lặp\n")
-        markdown_content.append("## Tổng quan\n")
-        markdown_content.append(f"- **Tổng số từ đã quét**: {metrics['words_scanned']}")
-        markdown_content.append(
-            f"- **Số từ không sao chép**: {metrics['words_original']} ({metrics['words_original_ratio']:.1%})")
-        markdown_content.append(
-            f"- **Số từ sao chép**: {metrics['words_copied']} ({(1 - metrics['words_original_ratio']):.1%})")
-        markdown_content.append(f"- **Tổng số mẫu đã quét**: {metrics['samples_scanned']}")
-        markdown_content.append(
-            f"- **Số mẫu không sao chép**: {metrics['samples_original']} ({metrics['samples_original_ratio']:.1%})")
-        markdown_content.append(f"- **Số mẫu sao chép**: {metrics['samples_copied']}\n")
-
-        if sources:
-            markdown_content.append("## Nguồn sao chép\n")
-            for i, source in enumerate(sources, 1):
-                markdown_content.append(f"{i}. **{source['name']}** (ID: {source['id']})")
-            markdown_content.append("")
-
-        markdown_content.append("## Phân tích nội dung\n")
-        current_sources = set()
-        current_color = None  # Track the current active color
-
-        for item in output:
-            if item["type"] == "text":
-                markdown_content.append(item["content"])
-            elif item["type"] == "highlight":
-                if current_color:
-                    # Apply color background using HTML span with inline CSS
-                    markdown_content.append(
-                        f'<span style="background-color: #{current_color}; padding: 2px 4px; border-radius: 3px;">**{item["content"]}**</span>')
-                else:
-                    markdown_content.append(f"**{item['content']}**")
-            elif item["type"] == "marker":
-                current_color = item.get("color")  # Update the current color
-                source_info = f"[Source: {item['name']}]"
-                if source_info not in current_sources:
-                    markdown_content.append(f"\n> {source_info}\n")
-                    current_sources.add(source_info)
-            elif item["type"] == "br":
-                markdown_content.append("\n")
-                current_color = None  # Reset color on line break
-
-        return "\n".join(markdown_content)
-
+            },
+            "sources": [
+                {
+                    "id": source_id,
+                    "color": info["color"],
+                    "name": info["name"],
+                    "description": info["description"],
+                    "words": info["words"],
+                    "samples": info["samples"]
+                } for source_id, info in sorted_sources
+            ],
+            "output": output
+        }
 
     def _clean_search_sample(self, sample):
-        """Clean and validate search sample"""
         if not sample:
             return sample
 
-        # Remove problematic characters that can break Solr queries
         sample = re.sub(r'[^\w\s\.,;:!?\-\'\"()]', ' ', sample)  # Keep only safe characters
         sample = re.sub(r'\s+', ' ', sample)  # Normalize whitespace
         sample = sample.strip()
 
-        # Remove very short or very long samples
         if len(sample) < 3 or len(sample) > 1000:
             return ""
 
         return sample
 
+    def _generate_markdown_output(self, output, sources, metrics):
+        sources_list = ""
+        if sources:
+            for i, source in enumerate(sources, 1):
+                sources_list += f"{i}. **{source['name']}** (ID: {source['id']})\n"
+
+        content_analysis = ""
+        current_sources = set()
+        current_color = None
+
+        for item in output:
+            if item["type"] == "text":
+                content_analysis += item["content"]
+            elif item["type"] == "highlight":
+                if current_color:
+                    content_analysis += f'<span style="background-color: #{current_color}; padding: 2px 4px; border-radius: 3px;">**{item["content"]}**</span>'
+                else:
+                    content_analysis += f"**{item['content']}**"
+            elif item["type"] == "marker":
+                current_color = item.get("color")
+                source_info = f"[Source: {item['name']}]"
+                if source_info not in current_sources:
+                    content_analysis += f"\n\n> {source_info}\n\n"
+                    current_sources.add(source_info)
+            elif item["type"] == "br":
+                content_analysis += "\n"
+                current_color = None
+
+        markdown_content = f"""# Báo cáo đánh giá trùng lặp
+
+    ## Tổng quan
+
+    - **Tổng số từ đã quét**: {metrics['words_scanned']}
+    - **Số từ không sao chép**: {metrics['words_original']} ({metrics['words_original_ratio']:.1%})
+    - **Số từ sao chép**: {metrics['words_copied']} ({(1 - metrics['words_original_ratio']):.1%})
+    - **Tổng số mẫu đã quét**: {metrics['samples_scanned']}
+    - **Số mẫu không sao chép**: {metrics['samples_original']} ({metrics['samples_original_ratio']:.1%})
+    - **Số mẫu sao chép**: {metrics['samples_copied']}
+
+    ## Nguồn sao chép
+
+    {sources_list}
+    ## Phân tích nội dung
+
+    {content_analysis}
+    """
+
+        return markdown_content
 
 
 class MetadataSearchAI(Resource):
@@ -297,7 +316,18 @@ class MetadataSearchAI(Resource):
                 {
                     "model_id": "gpt-4o",
                     "name": "GPT-4o",
-                    "description": "Mô hình mạnh cho tóm tắt và giải thích chi tiết",
+                    "description": "Truyền vào một đoạn văn bản, kiểm tra độ trùng lặp",
+                    "accepted_file_types": [
+                        "pdf",
+                        "docx",
+                        "txt",
+                        "md"
+                    ]
+                },
+                {
+                    "model_id": "gpt-4o",
+                    "name": "GPT-4o",
+                    "description": "Truyền vào một đoạn một file, trả ra mức độ trùng lặp của file",
                     "accepted_file_types": [
                         "pdf",
                         "docx",

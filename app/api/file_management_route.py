@@ -6,6 +6,7 @@ from flask_restful import Resource
 from flask import send_file
 from ..config import Config
 from ..services.database_service import DatabaseService
+from ..services.solr_service import SolrService
 logger = logging.getLogger(__name__)
 from ..utils import Utils
 
@@ -20,6 +21,9 @@ def get_files_in_directory(directory_path):
         raise Exception(f"Error reading directory {directory_path}: {str(e)}")
 
 class FileList(Resource):
+    def __init__(self):
+        self.solr_service = SolrService()
+
     def get(self):
         try:
             search_term = request.args.get('search', '')
@@ -36,50 +40,28 @@ class FileList(Resource):
 
             logger.info(f"Executing Solr query: {query}")
 
-            # Query Solr for files
-            response = requests.get(f"{Config.SOLR_URL}/query?q={query}&fl=id,resource_name,description&rows=1000")
-
-            if response.status_code != 200:
-                error_msg = "Không thể kết nối đến máy chủ Solr"
-                logger.error(f"{error_msg}. Status code: {response.status_code}")
-                return {
-                    "status": 0,
-                    "data": None,
-                    "message": error_msg
-                }, 500
-
-            result = response.json()
-
-            docs = result.get("response", {}).get("docs", [])
-
+            # Use SolrService instead of direct requests
+            search_results = self.solr_service.solr_client.search(
+                query,
+                fl="id,resource_name,description",
+                rows=1000
+            )
 
             files = []
-            seen_ids = set()  # Track IDs we've already processed
+            seen_ids = set()
 
-            for doc in docs:
-                # Get the ID value, handling both string and array cases
-                doc_id = doc.get("id", "")
-                if isinstance(doc_id, list) and doc_id:
-                    doc_id = doc_id[0]
+            for doc in search_results:
+                # Get the ID value
+                doc_id = self.solr_service.extract_field_value(doc.get("id", ""))
 
                 # Skip duplicate IDs
                 if doc_id in seen_ids:
                     continue
                 seen_ids.add(doc_id)
 
-                # Get resource_name, ensuring we have a string value
-                resource_name = doc.get("resource_name", ["Unknown"])
-                if isinstance(resource_name, list) and resource_name:
-                    resource_name = resource_name[0]
-                elif not isinstance(resource_name, str):
-                    resource_name = "Unknown"
-
-                # Get description, ensuring we have a string value
-                description = doc.get("description", [""])
-                if isinstance(description, list) and description:
-                    description = description[0]
-                elif not isinstance(description, str):
-                    description = ""
+                # Get resource_name and description using the service method
+                resource_name = self.solr_service.extract_field_value(doc.get("resource_name", "Unknown"))
+                description = self.solr_service.extract_field_value(doc.get("description", ""))
 
                 files.append({
                     "id": doc_id,
@@ -93,19 +75,12 @@ class FileList(Resource):
                 "message": "Danh sách tệp tin đã được lấy thành công"
             }, 200
 
-        except requests.RequestException as e:
-            logger.error(f"Error connecting to Solr: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error searching Solr: {str(e)}")
             return {
                 "status": 0,
                 "data": None,
                 "message": "Không thể kết nối đến máy chủ Solr"
-            }, 500
-        except Exception as e:
-            logger.error(e)
-            return {
-                "status": 0,
-                "data": None,
-                "message": e
             }, 500
 
 
