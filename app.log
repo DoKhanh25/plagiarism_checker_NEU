@@ -3908,3 +3908,16 @@ TypeError: FileScanResult.get() got an unexpected keyword argument 'file_id'
 2025-08-21 20:48:46,096 - app.api.file_upload_route - INFO - Characters scanned: 66461, copied: 187, original: 66274
 2025-08-21 20:48:46,096 - app.api.file_upload_route - INFO - Originality ratio - Words: 99.65%, Characters: 99.72%
 2025-08-21 20:48:46,099 - werkzeug - INFO - 127.0.0.1 - - [21/Aug/2025 20:48:46] "POST /api/file-search/single HTTP/1.1" 200 -
+2025-09-20 08:34:09,464 - app - INFO - PlagCheck application started successfully
+2025-09-20 08:34:09,465 - app - INFO - Database connected to: mysql+pymysql://plagcheck:123456a%40@127.0.0.1:3306/plagcheck_db
+2025-09-20 08:34:09,573 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2025-09-20 08:34:09,573 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-09-20 08:34:09,575 - werkzeug - INFO -  * Restarting with stat
+2025-09-20 08:34:10,607 - app - INFO - PlagCheck application started successfully
+2025-09-20 08:34:10,607 - app - INFO - Database connected to: mysql+pymysql://plagcheck:123456a%40@127.0.0.1:3306/plagcheck_db
+2025-09-20 08:34:10,619 - werkzeug - WARNING -  * Debugger is active!
+2025-09-20 08:34:10,626 - werkzeug - INFO -  * Debugger PIN: 458-252-344
+2025-09-20 08:35:36,043 - werkzeug - INFO - 127.0.0.1 - - [20/Sep/2025 08:35:36] "POST /api/file-search/ai/ask HTTP/1.1" 200 -
+2025-09-20 08:40:28,716 - werkzeug - INFO - 127.0.0.1 - - [20/Sep/2025 08:40:28] "[31m[1mPOST /api/file-search/ai/metadata HTTP/1.1[0m" 405 -
+2025-09-20 08:40:32,202 - werkzeug - INFO - 127.0.0.1 - - [20/Sep/2025 08:40:32] "GET /api/file-search/ai/metadata HTTP/1.1" 200 -

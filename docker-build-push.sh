@@ -13,7 +13,8 @@ docker tag ${DOCKER_HUB_USERNAME}/${BACKEND_IMAGE}:${IMAGE_VERSION} ${DOCKER_HUB
 
 # Build and push Angular frontend
 echo "Building Angular frontend Docker image..."
-cd ../../Front-end/PlagCheck
+#cd ../../Front-end/PlagCheck
+cd ../plagiarism_checker_NEU_FE
 docker build -t ${DOCKER_HUB_USERNAME}/${FRONTEND_IMAGE}:${IMAGE_VERSION} -f Dockerfile.angular .
 docker tag ${DOCKER_HUB_USERNAME}/${FRONTEND_IMAGE}:${IMAGE_VERSION} ${DOCKER_HUB_USERNAME}/${FRONTEND_IMAGE}:latest
 

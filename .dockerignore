@@ -2,12 +2,17 @@
 .git/
 .gitignore
 
+# Data files
+original_files/*
+
+
 # Docker files
 docker/
 mysql_data/
 solr_data/
 **/mysql_data/
 **/solr_data/
+**/flask_data/
 
 # Python cache files
 __pycache__/
