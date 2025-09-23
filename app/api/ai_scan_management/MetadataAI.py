@@ -6,9 +6,9 @@ Author: Khanh Trong Do
 Created: 20-09-2025
 Description: Provides metadata information about the AI service.
 """
-class MetadataAI(Resource):
-    def get(self):
-        result = {
+
+
+metadata = {
             "name": "Plagiarism Assistant",
             "description": "Phát hiện trùng lặp văn bản với kho dữ liệu nội sinh",
             "version": "1.2.0",
@@ -52,5 +52,10 @@ class MetadataAI(Resource):
             ],
             "contact": "thaop@neu.edu.vn",
             "status": "active"
-        }
+}
+
+
+class MetadataAI(Resource):
+    def get(self):
+        result = metadata
         return result, 200

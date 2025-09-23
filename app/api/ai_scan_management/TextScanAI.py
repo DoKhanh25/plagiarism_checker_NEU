@@ -3,7 +3,8 @@ import logging
 from flask import request
 from flask_restful import Resource
 from ...services.solr_service import SolrService
-
+from .MetadataAI import metadata
+import time
 logger = logging.getLogger(__name__)
 
 """
@@ -16,64 +17,67 @@ class TextScanAI(Resource):
         self.solr_service = SolrService()
 
     def post(self):
+        start_time = time.time()
+
         data = request.json
-        filename = data.get('filename', '')
-        content = data.get('content', '')
-        mimetype = data.get('mimetype', '')
+
+        content = data.get('prompt', '')
+        user = data.get('user', 'unknown')
         session_id = data.get('session_id', '')
+        model_id = data.get('model_id', '')
 
         expmin = 6
         expmax = 9
         multisource = True
 
-        if(not filename or not content or not mimetype):
+        if not model_id:
             return {
-                "status": 0,
-                "data": None,
-                "message": "Thiếu thông tin tệp"
-            }, 400
+                "session_id": session_id,
+                "status": "error",
+                "content_markdown": None,
+                "meta": None,
+                "attachments": None
+            }, 500
+
+        if not model_id or (model_id not in [m['model_id'] for m in metadata['supported_models']]):
+            return {
+                "session_id": session_id,
+                "status": "error",
+                "content_markdown": None,
+                "meta": None,
+                "attachments": None
+            }, 500
+
+
+        if not content or content == "":
+            return {
+                "session_id": session_id,
+                "status": "error",
+                "content_markdown": None,
+                "meta": None,
+                "attachments": None
+            }, 500
 
         try:
-            # Extract text from the file content
-            response = self.solr_service.extract_text(
-                filename=filename,
-                content=content,
-                mimetype=mimetype
-            )
-
-            if response.status_code != 200:
-                error_msg = f"Không thể kết nối đến máy chủ Solr cho tệp {filename}. Status code: {response.status_code}"
-                logger.error(error_msg)
-                return {
-                    "status": 0,
-                    "data": None,
-                    "message": error_msg
-                }, 500
-
-            result = response.json()
-
-            if result.get("responseHeader", {}).get("status", 0) != 0:
-                error_msg = f"Không thể trích xuất văn bản từ {filename}"
-                logger.error(
-                    f"{error_msg}. Solr response status: {result.get('responseHeader', {}).get('status', 'unknown')}")
-                return {
-                    "status": 0,
-                    "data": None,
-                    "message": error_msg
-                }, 500
-
-            document = result.get('file', "")
+            document = content
 
             sha1_temp = "temporary_id"
             result = self.process_document_optimized(document, sha1_temp, expmin, expmax, multisource)
-            result["filename"] = filename
-
             markdown_output = self._generate_markdown_output(result["output"], result["sources"], result["metrics"])
+
+            end_time = time.time()
+            response_time = int((end_time - start_time) * 1000)
 
             response_result = {
                 "session_id": session_id,
                 "status": "success",
-                "content_markdown": markdown_output
+                "content_markdown": markdown_output,
+                "meta": {
+                    "model": model_id,
+                    "response_time_ms": response_time,
+                    "tokens_used": 0
+                },
+                "attachments": None
             }
 
             return response_result, 200
@@ -210,7 +214,7 @@ class TextScanAI(Resource):
         sorted_sources = sorted(sources.items(), key=lambda x: x[1]["words"], reverse=True)
 
         return {
-            "filename": "processed_document",
+            "filename": "text",
             "metrics": {
                 "chars_doctotal": chars_doctotal,
                 "chars_scanned": chars_scanned,
