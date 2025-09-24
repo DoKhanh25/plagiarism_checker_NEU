@@ -18,4 +18,4 @@ urllib3==2.5.0
 gunicorn==21.2.0
 aiohttp==3.12.0
 celery==5.5.0
-
+redis==6.3.0

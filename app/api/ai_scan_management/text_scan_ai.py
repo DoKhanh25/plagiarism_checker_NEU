@@ -3,7 +3,7 @@ import logging
 from flask import request
 from flask_restful import Resource
 from ...services.solr_service import SolrService
-from .MetadataAI import metadata
+from .metadata_ai import metadata
 import time
 logger = logging.getLogger(__name__)
 

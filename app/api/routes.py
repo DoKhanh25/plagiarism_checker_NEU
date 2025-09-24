@@ -1,16 +1,17 @@
 
 import logging
-from .file_upload_route import SingleFileUpload
+# from .file_upload_route import SingleFileUpload
+from .file_management.file_upload import SingleFileUpload
 from .file_upload_route import SingleFileSearch
 from .file_upload_route import MultipleFileSearch
 from .file_management_route import FileScanList
 from .file_upload_route import DownloadExcelSample
 from .file_management_route import FileScanResult
 
-from .file_management.FileList import FileList
-from .file_management.FileDownload import FileDownload
-from .ai_scan_management.MetadataAI import MetadataAI
-from .ai_scan_management.TextScanAI import TextScanAI
+from .file_management.file_list import FileList
+from .file_management.file_download import FileDownload
+from .ai_scan_management.metadata_ai import MetadataAI
+from .ai_scan_management.text_scan_ai import TextScanAI
 # Configure logger for this module
 logger = logging.getLogger(__name__)
 

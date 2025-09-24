@@ -3,7 +3,7 @@ from ..database import db
 from ..services import SolrService, FileService
 import json
 import logging
-
+import base64
 logger = logging.getLogger(__name__)
 
 """
@@ -41,13 +41,25 @@ class OutboxEventUploadFileProcessor:
 
         if event.aggregate_type == "FILE" and event.event_type == "UPLOADED":
             self._handle_file_upload(payload)
-        elif event.aggregate_type == "FILE" and event.event_type == "CLEANUP":
-            self._handle_cleanup(payload)
 
 
     def _handle_file_upload(self, data):
+        file_path = data["file_path"]
+        try:
+            with open(file_path, 'rb') as f:
+                content = f.read()
+        except FileNotFoundError:
+            raise Exception(f"File not found: {file_path}")
+
         # Upload to Solr
-        response = self.solr_service.upload_file(**data['solr_data'])
+        response = self.solr_service.upload_file(
+            filename=data["filename"],
+            sha1_file=data["sha1_file"],
+            content=content,
+            mimetype=data["mimetype"],
+            description=data["description"]
+        )
+
         if response.status_code != 200:
             raise Exception("Solr upload failed")
 

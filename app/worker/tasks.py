@@ -1,6 +1,6 @@
-from app.worker.celery_app import celery
-from app.processor.upload_file_processor import OutboxEventUploadFileProcessor
+from app.processor.processor import OutboxEventUploadFileProcessor
 import logging
+from make_celery import celery
 
 logger = logging.getLogger(__name__)
 
@@ -14,4 +14,3 @@ def process_outbox_events(self) -> str:
     except Exception as e:
         logger.error(f"Failed to process outbox events: {e}")
         raise self.retry(countdown=60, exc=e)
-
