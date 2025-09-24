@@ -33,6 +33,14 @@ services:
     networks:
       - solr_network
 
+  redis:
+    image: redis:8.2.1
+    ports:
+      - "6379:6379"
+    container_name: redis_plagcheck
+    networks:
+      - solr_network
+      
   solr:
     image: solr:latest
     container_name: solr_plagcheck

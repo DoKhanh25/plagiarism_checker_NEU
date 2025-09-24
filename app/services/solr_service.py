@@ -145,7 +145,8 @@ class SolrService:
                 "commitWithin": 5000,
                 "literal.description": description,
                 "literal.resource_name": filename,
-                "overwrite": overwrite
+                "overwrite": overwrite,
+                "extractOnly": "false"
             }
 
             files_data = {"file": (filename, content, mimetype)}
@@ -181,6 +182,7 @@ class SolrService:
         try:
             # Format the delete request properly
             self.solr_client.delete(id=sha1_file)
+            self.solr_client.commit()
             return True
         except Exception as e:
             logger.error(f"Failed to delete file from Solr: {str(e)}")

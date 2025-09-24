@@ -35,6 +35,15 @@ class Config:
     #Config time-out for file processing
     SOLR_EXTRACT_TIMEOUT = int(os.getenv('SOLR_EXTRACT_TIMEOUT', '60'))  # 5 minutes for text extraction
 
+    #Config Cellery
+    CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+    CELERY_ACCEPT_CONTENT = ['json']
+    CELERY_TASK_SERIALIZER = 'json'
+    CELERY_RESULT_SERIALIZER = 'json'
+    CELERY_TIMEZONE = os.getenv('CELERY_TIMEZONE', 'UTC')
+
+
     # Logging configuration
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE = os.getenv('LOG_FILE', 'app.log')
