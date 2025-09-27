@@ -1,4 +1,4 @@
-from ..database import db
+from app.extensions import db
 
 class ScanResource(db.Model):
     __tablename__ = 'scan_resources'

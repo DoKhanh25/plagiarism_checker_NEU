@@ -1,5 +1,4 @@
-from datetime import datetime
-from ..database import db
+from app.extensions import db
 
 class ScanResult(db.Model):
     __tablename__ = 'scan_results'

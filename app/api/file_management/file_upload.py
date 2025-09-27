@@ -1,14 +1,13 @@
 import logging
-import requests
+
 from flask import request
 from flask_restful import Resource
-from ...config import Config
-from ...models import OutboxEvent
-from ...services.file_service import FileService
-from ...services.solr_service import SolrService
-from ...services.database_service import DatabaseService
-from ...outbox_publisher.publisher import OutboxEventPublisher
-from ...worker.tasks import process_outbox_events
+from app.models import OutboxEvent
+from app.services.file_service import FileService
+from app.services.solr_service import SolrService
+from app.services.database_service import DatabaseService
+from app.outbox_publisher.publisher import OutboxEventPublisher
+from app.worker.tasks import process_outbox_events
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +76,7 @@ class SingleFileUpload(Resource):
                 aggregate_id=str(document.id),
                 payload=outbox_payload
             )
+
             process_outbox_events.delay()
 
 

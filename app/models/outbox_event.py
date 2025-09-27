@@ -1,4 +1,4 @@
-from ..database import db
+from app.extensions import db
 
 class OutboxEvent(db.Model):
     __tablename__ = 'outbox_events'

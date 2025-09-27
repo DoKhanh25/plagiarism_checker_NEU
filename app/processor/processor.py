@@ -1,5 +1,5 @@
 from ..models import OutboxEvent
-from ..database import db
+from ..extensions import db
 from ..services import SolrService, FileService
 import json
 import logging

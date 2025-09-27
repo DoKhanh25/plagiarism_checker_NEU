@@ -1,11 +1,12 @@
-from flask_restful import Resource
 import requests
-from ...config import Config
-from flask import request, send_file
-from ...utils import Utils
 import logging
-logger = logging.getLogger(__name__)
 
+from app.config import Config
+from flask import request, send_file
+from app.utils import Utils
+from flask_restful import Resource
+
+logger = logging.getLogger(__name__)
 
 class FileList(Resource):
     def get(self):

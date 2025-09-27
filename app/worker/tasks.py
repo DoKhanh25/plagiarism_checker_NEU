@@ -1,11 +1,13 @@
-from app.processor.processor import OutboxEventUploadFileProcessor
 import logging
-from make_celery import celery
+
+
+from app.extensions import celery
+from app.processor.processor import OutboxEventUploadFileProcessor
 
 logger = logging.getLogger(__name__)
 
 
-@celery.task(bind=True, max_retries=4)
+@celery.task
 def process_outbox_events(self) -> str:
     try:
         processor = OutboxEventUploadFileProcessor()

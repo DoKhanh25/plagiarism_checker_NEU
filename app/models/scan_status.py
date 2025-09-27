@@ -1,5 +1,5 @@
 from datetime import datetime
-from ..database import db
+from app.extensions import db
 
 class ScanStatus(db.Model):
     __tablename__ = 'scan_status'

@@ -1,5 +1,5 @@
 from datetime import datetime
-from ..database import db
+from app.extensions import db
 
 class Document(db.Model):
     __tablename__ = 'documents'

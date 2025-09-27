@@ -1,26 +1,13 @@
 from flask import Flask
 from flask_restful import Api
-from .database import db
+from .extensions import db
 from .config import Config
 from flask_cors import CORS
 import logging
 from .services.database_service import DatabaseService
-from celery import Celery, Task
+from .extensions import make_celery
 
 
-
-def celery_init_app(app: Flask) -> Celery:
-    class FlaskTask(Task):
-        def __call__(self, *args: object, **kwargs: object) -> object:
-            with app.app_context():
-                return self.run(*args, **kwargs)
-
-    celery_app = Celery(app.name)
-    celery_app.config_from_object(app.config["CELERY"])
-    celery_app.set_default()
-    celery_app.Task = FlaskTask
-    app.extensions["celery"] = celery_app
-    return celery_app
 
 def create_app():
     # Configure logging first
@@ -30,13 +17,17 @@ def create_app():
     app.config.from_object(Config)
     app.config["CELERY"] = {
         'broker_url': Config.CELERY_BROKER_URL,
-        'result_backend': Config.CELERY_RESULT_BACKEND
+        'result_backend': Config.CELERY_RESULT_BACKEND,
+        'accept_content': Config.CELERY_ACCEPT_CONTENT,
+        'task_serializer': Config.CELERY_TASK_SERIALIZER,
+        'result_serializer': Config.CELERY_RESULT_SERIALIZER,
+        'timezone': Config.CELERY_TIMEZONE,
+        'enable_utc': True,
+        'include': ['app.worker.tasks']
     }
     CORS(app, resources={r"/*": {"origins": "*"}})
 
-    # Initialize Celery
-    celery_init_app(app)
-
+    make_celery(app)
 
     # Initialize database
     db.init_app(app)

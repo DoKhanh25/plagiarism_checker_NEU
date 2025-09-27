@@ -1,8 +1,9 @@
-from flask_restful import Resource
 import os
-from ...config import Config
-from flask import request, send_file
 import logging
+
+from app.config import Config
+from flask import request, send_file
+from flask_restful import Resource
 
 
 logger = logging.getLogger(__name__)

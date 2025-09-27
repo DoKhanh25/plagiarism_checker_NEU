@@ -1,10 +1,12 @@
 import re
 import logging
+import time
+
 from flask import request
 from flask_restful import Resource
-from ...services.solr_service import SolrService
+from app.services.solr_service import SolrService
 from .metadata_ai import metadata
-import time
+
 logger = logging.getLogger(__name__)
 
 """
